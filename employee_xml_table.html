@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Employee Information - XML Reader</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    padding: 32px 14px;
+    font-family: "Segoe UI", Arial, sans-serif;
+    color: #e2e8f0;
+    background:
+      radial-gradient(circle at 15% 20%, rgba(34,211,238,.25), transparent 40%),
+      radial-gradient(circle at 85% 80%, rgba(168,85,247,.28), transparent 45%),
+      linear-gradient(135deg, #0f172a 0%, #1e1b4b 55%, #0c4a6e 100%);
+    background-attachment: fixed;
+  }
+  .container { max-width: 1000px; margin: 0 auto; }
+  h1 {
+    text-align: center;
+    margin: 0 0 6px;
+    font-size: 30px;
+    background: linear-gradient(90deg, #22d3ee, #a78bfa);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .sub { text-align: center; color: #94a3b8; margin-bottom: 22px; font-size: 14px; }
+  .panel {
+    background: rgba(255,255,255,.07);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255,255,255,.14);
+    border-radius: 14px;
+    padding: 18px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.35);
+  }
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; align-items: center; }
+  .toolbar input[type=text] {
+    flex: 1; min-width: 180px;
+    padding: 10px 14px; border-radius: 8px;
+    border: 1px solid rgba(255,255,255,.2);
+    background: rgba(15,23,42,.6); color: #fff; font-size: 14px;
+  }
+  .toolbar input::placeholder { color: #94a3b8; }
+  .btn {
+    padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer;
+    font-weight: 600; font-size: 14px;
+    background: linear-gradient(90deg, #06b6d4, #8b5cf6); color: #fff;
+  }
+  .btn.alt { background: rgba(255,255,255,.14); }
+  .btn:hover { filter: brightness(1.15); }
+  #fileInput { display: none; }
+  .status { font-size: 13px; color: #94a3b8; margin-bottom: 10px; }
+  .status.err { color: #fca5a5; }
+  .table-wrap { overflow-x: auto; border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; min-width: 720px; }
+  thead th {
+    background: rgba(6,182,212,.25);
+    color: #a5f3fc;
+    text-align: left;
+    padding: 12px 10px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+  }
+  thead th:hover { background: rgba(6,182,212,.4); }
+  tbody td { padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,.08); font-size: 14px; }
+  tbody tr:hover { background: rgba(255,255,255,.07); }
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px;
+    font-size: 12px; background: rgba(167,139,250,.25); color: #ddd6fe;
+  }
+  .empty { text-align: center; padding: 24px; color: #94a3b8; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Employee Information</h1>
+  <div class="sub">Data read from an XML file and displayed in tabular format</div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input type="text" id="search" placeholder="Search employees...">
+      <button class="btn" onclick="document.getElementById('fileInput').click()">Load XML File</button>
+      <button class="btn alt" onclick="loadFromString(sampleXML, 'built-in sample data')">Load Sample</button>
+      <input type="file" id="fileInput" accept=".xml,text/xml,application/xml">
+    </div>
+    <div class="status" id="status"></div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr id="headRow"></tr></thead>
+        <tbody id="body"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Sample XML (used by default). You can also load your own .xml file with the same structure.
+  var sampleXML = '<?xml version="1.0" encoding="UTF-8"?>' +
+  '<employees>' +
+    '<employee><id>101</id><name>Ravi Kumar</name><designation>Software Engineer</designation><department>IT</department><salary>65000</salary><email>ravi.kumar@company.com</email><city>Hyderabad</city></employee>' +
+    '<employee><id>102</id><name>Anita Sharma</name><designation>HR Manager</designation><department>Human Resources</department><salary>72000</salary><email>anita.sharma@company.com</email><city>Bengaluru</city></employee>' +
+    '<employee><id>103</id><name>Suresh Reddy</name><designation>Accountant</designation><department>Finance</department><salary>54000</salary><email>suresh.reddy@company.com</email><city>Chennai</city></employee>' +
+    '<employee><id>104</id><name>Priya Nair</name><designation>UI/UX Designer</designation><department>Design</department><salary>60000</salary><email>priya.nair@company.com</email><city>Kochi</city></employee>' +
+    '<employee><id>105</id><name>Arjun Mehta</name><designation>Project Manager</designation><department>IT</department><salary>95000</salary><email>arjun.mehta@company.com</email><city>Mumbai</city></employee>' +
+    '<employee><id>106</id><name>Lakshmi Devi</name><designation>Data Analyst</designation><department>Analytics</department><salary>58000</salary><email>lakshmi.devi@company.com</email><city>Tirupati</city></employee>' +
+  '</employees>';
+
+  var employees = [];   // array of {field: value}
+  var columns = [];     // column names taken from the XML tags
+  var sortCol = null, sortAsc = true;
+
+  function setStatus(msg, isErr) {
+    var s = document.getElementById("status");
+    s.textContent = msg;
+    s.className = "status" + (isErr ? " err" : "");
+  }
+
+  // Parse XML text into an array of employee objects
+  function loadFromString(xmlText, sourceName) {
+    var doc = new DOMParser().parseFromString(xmlText, "application/xml");
+    if (doc.getElementsByTagName("parsererror").length) {
+      setStatus("Invalid XML file. Please check its structure.", true);
+      return;
+    }
+    var nodes = doc.getElementsByTagName("employee");
+    if (!nodes.length) {
+      setStatus("No <employee> elements found in the XML.", true);
+      return;
+    }
+    employees = [];
+    columns = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var row = {};
+      var kids = nodes[i].children;
+      for (var j = 0; j < kids.length; j++) {
+        var tag = kids[j].tagName;
+        row[tag] = kids[j].textContent.trim();
+        if (columns.indexOf(tag) === -1) columns.push(tag);
+      }
+      employees.push(row);
+    }
+    sortCol = null;
+    document.getElementById("search").value = "";
+    setStatus(employees.length + " employee records loaded from " + sourceName + ".");
+    render();
+  }
+
+  function pretty(name) {
+    return name.charAt(0).toUpperCase() + name.slice(1);
+  }
+
+  function render() {
+    var q = document.getElementById("search").value.toLowerCase();
+    var rows = employees.filter(function (e) {
+      return columns.some(function (c) { return (e[c] || "").toLowerCase().indexOf(q) !== -1; });
+    });
+
+    if (sortCol) {
+      rows.sort(function (a, b) {
+        var x = a[sortCol] || "", y = b[sortCol] || "";
+        var nx = parseFloat(x), ny = parseFloat(y);
+        var cmp = (!isNaN(nx) && !isNaN(ny)) ? nx - ny : x.localeCompare(y);
+        return sortAsc ? cmp : -cmp;
+      });
+    }
+
+    var head = document.getElementById("headRow");
+    head.innerHTML = "";
+    columns.forEach(function (c) {
+      var th = document.createElement("th");
+      var arrow = sortCol === c ? (sortAsc ? " \u25B2" : " \u25BC") : "";
+      th.textContent = pretty(c) + arrow;
+      th.onclick = function () {
+        if (sortCol === c) sortAsc = !sortAsc; else { sortCol = c; sortAsc = true; }
+        render();
+      };
+      head.appendChild(th);
+    });
+
+    var body = document.getElementById("body");
+    body.innerHTML = "";
+    if (!rows.length) {
+      body.innerHTML = '<tr><td class="empty" colspan="' + (columns.length || 1) + '">No matching records.</td></tr>';
+      return;
+    }
+    rows.forEach(function (e) {
+      var tr = document.createElement("tr");
+      columns.forEach(function (c) {
+        var td = document.createElement("td");
+        var v = e[c] || "";
+        if (c === "department") {
+          var b = document.createElement("span");
+          b.className = "badge";
+          b.textContent = v;
+          td.appendChild(b);
+        } else if (c === "salary" && v !== "" && !isNaN(v)) {
+          td.textContent = "\u20B9 " + Number(v).toLocaleString("en-IN");
+        } else {
+          td.textContent = v;
+        }
+        tr.appendChild(td);
+      });
+      body.appendChild(tr);
+    });
+  }
+
+  // Read a user-selected XML file
+  document.getElementById("fileInput").addEventListener("change", function (ev) {
+    var file = ev.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function (e) { loadFromString(e.target.result, file.name); };
+    reader.onerror = function () { setStatus("Could not read the file.", true); };
+    reader.readAsText(file);
+  });
+
+  document.getElementById("search").addEventListener("input", render);
+
+  // Try to fetch employees.xml placed next to this page; fall back to the built-in sample.
+  (function init() {
+    fetch("employees.xml")
+      .then(function (r) { if (!r.ok) throw new Error(); return r.text(); })
+      .then(function (t) { loadFromString(t, "employees.xml"); })
+      .catch(function () { loadFromString(sampleXML, "built-in sample data"); });
+  })();
+</script>
+</body>
+</html>
